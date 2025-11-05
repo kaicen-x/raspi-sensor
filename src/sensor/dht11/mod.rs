@@ -1,7 +1,7 @@
 use rppal::gpio::Gpio;
 use std::time::{Duration, Instant};
 
-/// DHT11 温度、湿度二合一传感器
+/// DHT11 温度、湿度二合一传感器封装对象
 pub struct DHT11 {
     /// 使用的GPIO针脚，树莓派通常为GPIO4
     /// 需要注意的是树莓派需要启用1-wire(One-Wire)接口协议
