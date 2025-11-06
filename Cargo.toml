@@ -3,6 +3,27 @@ name = "raspi-sensor"
 version = "0.1.0"
 edition = "2024"
 
+[lib]
+name = "raspi_sensor"
+path = "src/lib.rs"
+crate-type = ["lib"]
+
+[[bin]]
+name = "led-sensor-test"
+path = "src/cmd/led_sensor_test.rs"
+
+[[bin]]
+name = "button-sensor-test"
+path = "src/cmd/button_sensor_test.rs"
+
+[[bin]]
+name = "dht11-sensor-test"
+path = "src/cmd/dht11_sensor_test.rs"
+
+[[bin]]
+name = "weight-sensor-test"
+path = "src/cmd/weight_sensor_test.rs"
+
 [dependencies]
 rppal = "0.22.1"
 anyhow = "1.0.100"
