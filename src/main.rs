@@ -20,15 +20,27 @@ fn main() -> anyhow::Result<()> {
     let mut button = Button::new(BUTTON_PIN)?;
     // 创建LED实例
     let mut led = LED::new(LED_PIN)?;
+    let mut led_state: bool = false;
 
     // 监听按钮状态变化
     button.on_change(move |state| {
+        // if state {
+        //     println!("按钮按下");
+        //     led.open();
+        // } else {
+        //     println!("按钮松开");
+        //     led.close();
+        // }
         if state {
             println!("按钮按下");
-            led.open();
-        } else {
-            println!("按钮松开");
-            led.close();
+            if led_state {
+                println!("关闭LED灯");
+                led.close();
+            } else {
+                println!("打开LED灯下");
+                led.open();
+            }
+            led_state = !led_state;
         }
     })?;
 
