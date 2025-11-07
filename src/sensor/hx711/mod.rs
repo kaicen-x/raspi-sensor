@@ -145,4 +145,11 @@ impl HX711 {
         // 等待1毫秒，以保证时钟引脚处于低电平状态
         Self::wait(Duration::from_millis(1));
     }
+
+    /// 设置HX711的传感器采集通道及增益
+    ///
+    /// - 设置通道和增益后，根据厂家的文档描述，需要采集4次以上新的数据才会稳定
+    pub fn set_gain(&mut self, gain: Gain) {
+        self.gain = gain;
+    }
 }
