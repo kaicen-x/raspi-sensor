@@ -11,7 +11,7 @@ pub struct DHT11 {
 /// 实现传感器操作
 impl DHT11 {
     /// 自实现等待，使用std::thread::sleep会导致主线程被挂起，引发时许错乱问题，导致数据无法接收成功
-    /// 这是由于DHT11严格的时序要求导致的
+    /// ，这是由于DHT11严格的时序要求导致的
     #[inline(always)]
     fn wait(duration: Duration) {
         let start = Instant::now();

@@ -41,6 +41,7 @@ struct WeightProcessor {
 /// 实现称重处理器操作
 impl WeightProcessor {
     /// 限容队列添加数据
+    #[inline(always)]
     fn queue_push<T>(queue: &mut VecDeque<T>, cap: usize, value: T) {
         if queue.len() >= cap {
             // 移除无效的数据
@@ -53,6 +54,7 @@ impl WeightProcessor {
     }
 
     /// 计算队列的平均值
+    #[inline(always)]
     fn queue_average(queue: &VecDeque<i32>) -> i32 {
         if queue.len() > 0 {
             // 计算缓冲队列的平均值(ADC读数)
@@ -69,7 +71,7 @@ impl WeightProcessor {
         adc_data: i32,
         zero_offset: i32,
         transform_factor: f32,
-    ) -> anyhow::Result<i32, String> {
+    ) -> anyhow::Result<i32> {
         // 检查矫正因子
         if transform_factor != 0.0 {
             // 计算有效ADC读数
@@ -82,11 +84,12 @@ impl WeightProcessor {
             Ok(weight.round() as i32)
         } else {
             // 矫正因子为0时无法转换重量
-            Err("矫正因子为0时无法转换重量，请设置矫正因子".to_string())
+            Err(anyhow::anyhow!("矫正因子为0时无法转换重量，请设置矫正因子"))
         }
     }
 
     /// 检查当前重量是否稳定
+    #[inline(always)]
     fn is_stable(
         adc_data_stable_queue: &VecDeque<i32>,
         sq_cap: usize,
@@ -134,6 +137,7 @@ impl WeightProcessor {
     }
 
     /// 构建称重处理器实例
+    /// 
     /// - bq_cap: ADC读数缓冲队列容量
     /// - sq_cap: ADC读数稳定检查队列容量
     pub fn new(
@@ -313,7 +317,7 @@ impl WeightProcessor {
     }
 
     /// 设置重量转换因子
-    pub fn set_transform_factor(&self, actual_weight: i32) -> anyhow::Result<u32, String> {
+    pub fn set_transform_factor(&self, actual_weight: i32) -> anyhow::Result<u32> {
         // 实际重量不能为0，否则无法计算转换因子
         if actual_weight != 0 {
             // 获取当前最新的ADC平均读数
@@ -334,7 +338,7 @@ impl WeightProcessor {
             // 返回计算好的转换因子
             Ok(transform_factor_u32)
         } else {
-            Err("实际重量不能为0".to_string())
+            Err(anyhow::anyhow!("实际重量不能为0"))
         }
     }
 }
@@ -345,6 +349,7 @@ const BUTTON_PIN: u8 = 17;
 const HX711_DATA_PIN: u8 = 23;
 const HX711_CLOCK_PIN: u8 = 24;
 
+/// 称重传感器测试程序
 fn main() -> anyhow::Result<()> {
     // 创建按钮实例
     let mut button = Button::new(BUTTON_PIN)?;

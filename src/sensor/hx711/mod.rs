@@ -66,10 +66,10 @@ impl HX711 {
     /// 读取HX711输出的数据
     ///
     /// - HX711输出的时24位的数据，所以int32类型足够存储
-    pub fn read(&mut self) -> anyhow::Result<i32, String> {
+    pub fn read(&mut self) -> anyhow::Result<i32> {
         // 检查数模转换芯片是否就绪
         if !self.is_ready() {
-            return Err("HX711数模转换芯片未就绪，请稍后再试".to_string());
+            return Err(anyhow::anyhow!("HX711数模转换芯片未就绪，请稍后再试"));
         }
 
         // 读取到的原始数据
