@@ -2,13 +2,342 @@ use std::{
     collections::VecDeque,
     sync::{
         Arc,
-        atomic::{AtomicI32, Ordering},
+        atomic::{AtomicI32, AtomicU32, Ordering},
+        mpsc,
     },
+    time::Instant,
 };
 use std::{thread, time::Duration};
 
 use raspi_sensor::sensor::button::Button;
 use raspi_sensor::sensor::hx711::{Gain, HX711};
+
+/// 重量状态
+#[repr(i32)]
+#[derive(Debug)]
+pub enum WeightStatus {
+    /// 不稳定
+    Unstable = 0,
+    /// 稳定
+    Stable = 1,
+    /// 欠载
+    Underload = 2,
+    /// 超载
+    Overload = 3,
+    /// 错误
+    Error = 4,
+}
+
+/// 称重处理器
+struct WeightProcessor {
+    /// ADC读数最新平均值
+    adc_data_latest_average: Arc<AtomicI32>,
+    /// ADC读数0点偏移值（俗称皮重）
+    adc_data_zero_offset: Arc<AtomicI32>,
+    /// ADC读数转换为实物重量时的矫正因子(实际为float32类型)（不受重量单位限制）
+    adc_data_transform_factor: Arc<AtomicU32>,
+}
+
+/// 实现称重处理器操作
+impl WeightProcessor {
+    /// 限容队列添加数据
+    fn queue_push<T>(queue: &mut VecDeque<T>, cap: usize, value: T) {
+        if queue.len() >= cap {
+            // 移除无效的数据
+            for _ in 0..(queue.len() - cap + 1) {
+                queue.pop_front();
+            }
+        }
+        // 追加最新的数据
+        queue.push_back(value);
+    }
+
+    /// 计算队列的平均值
+    fn queue_average(queue: &VecDeque<i32>) -> i32 {
+        if queue.len() > 0 {
+            // 计算缓冲队列的平均值(ADC读数)
+            let sum: i32 = queue.iter().sum();
+            sum / queue.len() as i32
+        } else {
+            0
+        }
+    }
+
+    /// ADC读数转换函数，转换后可得到实际物品的重量
+    #[inline(always)]
+    fn adc_data_transform(
+        adc_data: i32,
+        zero_offset: i32,
+        transform_factor: f32,
+    ) -> anyhow::Result<i32, String> {
+        // 检查矫正因子
+        if transform_factor != 0.0 {
+            // 计算有效ADC读数
+            // 有效ADC读数 = ADC读数 - ADC读数0点偏移值
+            let valid_adc_data = adc_data - zero_offset;
+            // 计算实际物体的重量
+            // 实际物体重量 = 有效ADC读数 / 矫正因子
+            let weight = valid_adc_data as f32 / transform_factor;
+            // 四舍五入一下得到整数
+            Ok(weight.round() as i32)
+        } else {
+            // 矫正因子为0时无法转换重量
+            Err("矫正因子为0时无法转换重量，请设置矫正因子".to_string())
+        }
+    }
+
+    /// 检查当前重量是否稳定
+    fn is_stable(
+        adc_data_stable_queue: &VecDeque<i32>,
+        sq_cap: usize,
+        zero_offset: i32,
+        transform_factor: f32,
+    ) -> bool {
+        if adc_data_stable_queue.len() < sq_cap {
+            // 不稳定
+            false
+        } else {
+            // 比较重量（全部一致才认为稳定，注意：不能用ADC读数直接比较）
+            let mut tmp_weight: Option<i32> = None;
+            for item in adc_data_stable_queue.iter() {
+                // 换算为实际物品的重量
+                let item_weight =
+                    match WeightProcessor::adc_data_transform(*item, zero_offset, transform_factor)
+                    {
+                        // 重量转换成功
+                        Ok(res) => res,
+                        // 重量转换失败
+                        Err(err) => {
+                            // 转换矫正因子为0时直接返回不稳定
+                            eprintln!("检查稳定状态失败: {}", err);
+                            return false;
+                        }
+                    };
+
+                // 是否可比较
+                match tmp_weight {
+                    // 可比较
+                    Some(tmp) => {
+                        if item_weight != tmp {
+                            // 响应不稳定
+                            return false;
+                        }
+                    }
+                    // 不可比较
+                    None => tmp_weight = Some(item_weight),
+                }
+            }
+
+            // 默认返回稳定
+            return true;
+        }
+    }
+
+    /// 构建称重处理器实例
+    /// - bq_cap: ADC读数缓冲队列容量
+    /// - sq_cap: ADC读数稳定检查队列容量
+    pub fn new(
+        clock_pin: u8,
+        data_pin: u8,
+        gain: Gain,
+        bq_cap: usize,
+        sq_cap: usize,
+        transform_factor: u32,
+        sender: mpsc::SyncSender<(i32, WeightStatus)>,
+    ) -> anyhow::Result<Self> {
+        // 构建HX711数模转换传感器实例
+        let mut hx711 = HX711::new(clock_pin, data_pin, gain)?;
+
+        // ADC读数缓冲队列
+        let mut adc_data_buffer_queue: VecDeque<i32> = VecDeque::with_capacity(bq_cap);
+        // ADC读数稳定检查队列（存放ADC读数缓冲队列每次更新后的平均值）
+        let mut adc_data_stable_queue: VecDeque<i32> = VecDeque::with_capacity(sq_cap);
+
+        // 读取10次有效ADC读数（确保缓冲队列有值，以实现开机去皮）
+        for _ in 0..10 {
+            // 读取数据
+            if let Ok(data) = hx711.read() {
+                // 将数据添加到ADC读数缓冲队列
+                Self::queue_push(&mut adc_data_buffer_queue, bq_cap, data);
+            }
+            // 等待100ms, 不然HX711芯片处理不过来
+            std::thread::sleep(Duration::from_millis(100));
+        }
+
+        // 滤波：计算初始ADC平均读数
+        let init_adc_data_average = Self::queue_average(&adc_data_buffer_queue);
+        // 将计算得到的ADC平均读数存入稳定检查队列
+        Self::queue_push(&mut adc_data_stable_queue, sq_cap, init_adc_data_average);
+
+        // 将计算得到的ADC平均读数存入最新平均读数中
+        let adc_data_latest_average = Arc::new(AtomicI32::new(init_adc_data_average));
+        // ADC读数0点偏移值（俗称皮重）
+        // 将计算得到的ADC平均读数设置为ADC读数0点偏移值，以实现开机去皮
+        let adc_data_zero_offset = Arc::new(AtomicI32::new(init_adc_data_average));
+        println!("初始皮重(ADC读数): {}", init_adc_data_average);
+        // ADC读数转换为实物重量时的矫正因子(实际为float32类型)（不受重量单位限制）
+        let adc_data_transform_factor = Arc::new(AtomicU32::new(transform_factor));
+
+        // 克隆一些需要在独立线程中使用的变量
+        // 独立线程运行传感器数据读取
+        // adc_data_buffer_queue、adc_data_stable_queue不需要克隆，他们的所有权就在独立线程中
+        WeightProcessor::loop_read(
+            hx711,
+            sender,
+            adc_data_buffer_queue,
+            bq_cap,
+            adc_data_stable_queue,
+            sq_cap,
+            adc_data_latest_average.clone(),
+            adc_data_zero_offset.clone(),
+            adc_data_transform_factor.clone(),
+        );
+
+        // OK
+        Ok(Self {
+            adc_data_latest_average,
+            adc_data_zero_offset,
+            adc_data_transform_factor,
+        })
+    }
+
+    /// 循环读取传感器数据
+    fn loop_read(
+        mut hx711: HX711,
+        sender: mpsc::SyncSender<(i32, WeightStatus)>,
+        mut adc_data_buffer_queue: VecDeque<i32>,
+        bq_cap: usize,
+        mut adc_data_stable_queue: VecDeque<i32>,
+        sq_cap: usize,
+        adc_data_latest_average: Arc<AtomicI32>,
+        adc_data_zero_offset: Arc<AtomicI32>,
+        adc_data_transform_factor: Arc<AtomicU32>,
+    ) {
+        // 异步线程从传感器读取数据
+        thread::spawn(move || {
+            // 死循环开始读取HX711传感器数据
+            loop {
+                // 读取数据
+                match hx711.read() {
+                    // 读取成功
+                    Ok(data) => {
+                        // 将数据添加到ADC读数缓冲队列
+                        WeightProcessor::queue_push(&mut adc_data_buffer_queue, bq_cap, data);
+                        // 滤波：计算ADC平均读数
+                        let adc_data_average = Self::queue_average(&adc_data_buffer_queue);
+                        // 将计算得到的ADC平均读数存入最新平均读数中
+                        adc_data_latest_average.store(adc_data_average, Ordering::Release);
+                        // 将计算得到的ADC平均读数存入稳定检查队列
+                        WeightProcessor::queue_push(
+                            &mut adc_data_stable_queue,
+                            sq_cap,
+                            adc_data_average,
+                        );
+
+                        // 提取ADC读数0点偏移值
+                        let zero_offset = adc_data_zero_offset.load(Ordering::Acquire);
+                        // 提取ADC读数转换矫正因子
+                        let transform_factor_u32 =
+                            adc_data_transform_factor.load(Ordering::Acquire);
+                        let transform_factor = f32::from_bits(transform_factor_u32);
+
+                        // 换算为实际物品的重量
+                        let weight = match WeightProcessor::adc_data_transform(
+                            adc_data_average,
+                            zero_offset,
+                            transform_factor,
+                        ) {
+                            // 重量转换成功
+                            Ok(res) => res,
+                            // 重量转换失败
+                            Err(err) => {
+                                eprintln!("转换重量失败: {}", err);
+                                // 这个HX711传感器需要间隔100ms读取一次数据
+                                thread::sleep(Duration::from_millis(100));
+                                continue;
+                            }
+                        };
+
+                        // 计算状态
+                        let weight_status = if weight < 0 {
+                            // 欠载
+                            WeightStatus::Underload
+                        } else if weight > 5000 {
+                            // 超载
+                            WeightStatus::Overload
+                        } else {
+                            // 检查是否稳定
+                            if WeightProcessor::is_stable(
+                                &adc_data_stable_queue,
+                                sq_cap,
+                                zero_offset,
+                                transform_factor,
+                            ) {
+                                // 稳定
+                                WeightStatus::Stable
+                            } else {
+                                // 不稳定
+                                WeightStatus::Unstable
+                            }
+                        };
+
+                        // 向通道发送数据
+                        if let Err(err) = sender.send((weight, weight_status)) {
+                            eprintln!("向通道接收者发送读取到的重量失败: {}", err);
+                        }
+                    }
+
+                    // 读取失败
+                    Err(err) => {
+                        eprintln!("读取ADC读数失败: {}", err);
+                        // 向通道发送数据
+                        if let Err(err) = sender.send((0, WeightStatus::Error)) {
+                            eprintln!("向通道接收者发送异常信息失败: {}", err);
+                        }
+                    }
+                }
+
+                // 这个HX711传感器需要间隔100ms读取一次数据
+                thread::sleep(Duration::from_millis(100));
+            }
+        });
+    }
+
+    /// 设置皮重
+    pub fn set_tare_weight(&self) {
+        // 获取当前最新的ADC平均读数
+        let adc_data_latest_average = self.adc_data_latest_average.load(Ordering::Acquire);
+        // 使用最新的ADC平均读数作为ADC读数0点偏移值
+        self.adc_data_zero_offset
+            .store(adc_data_latest_average, Ordering::Release);
+    }
+
+    /// 设置重量转换因子
+    pub fn set_transform_factor(&self, actual_weight: i32) -> anyhow::Result<u32, String> {
+        // 实际重量不能为0，否则无法计算转换因子
+        if actual_weight != 0 {
+            // 获取当前最新的ADC平均读数
+            let adc_data_latest_average = self.adc_data_latest_average.load(Ordering::Acquire);
+            // 获取ADC读数0点偏移值
+            let adc_data_zero_offset = self.adc_data_zero_offset.load(Ordering::Acquire);
+            // 计算有效ADC读数
+            // 有效ADC读数 = ADC平均读数 - ADC读数0点偏移值
+            let valid_adc_data = adc_data_latest_average - adc_data_zero_offset;
+            // 计算转换因子
+            // 转换因子 = 有效ADC读数 / 实际重量
+            let transform_factor = valid_adc_data as f32 / actual_weight as f32;
+            // 将其转换为二进制，以便于通过原子操作存储
+            let transform_factor_u32 = transform_factor.to_bits();
+            // 保存转换因子
+            self.adc_data_transform_factor
+                .store(transform_factor_u32, Ordering::Release);
+            // 返回计算好的转换因子
+            Ok(transform_factor_u32)
+        } else {
+            Err("实际重量不能为0".to_string())
+        }
+    }
+}
 
 // Button接入GPIO针脚
 const BUTTON_PIN: u8 = 17;
@@ -19,102 +348,69 @@ const HX711_CLOCK_PIN: u8 = 24;
 fn main() -> anyhow::Result<()> {
     // 创建按钮实例
     let mut button = Button::new(BUTTON_PIN)?;
-    // 创建HX711称重传感器实例
-    let mut hx711 = HX711::new(HX711_CLOCK_PIN, HX711_DATA_PIN, Gain::ChannelA128)?;
-    // 缓存的皮重(克)
-    let tare_weight: Arc<AtomicI32> = Arc::new(AtomicI32::new(0));
-    // 缓存的当前重量（克）
-    let current_weight: Arc<AtomicI32> = Arc::new(AtomicI32::new(0));
-    // 三次缓存（克），用来判断是否稳定
-    let mut weight_cache: VecDeque<i32> = VecDeque::with_capacity(3);
+    // 创建重量传输通道
+    let (weight_sender, weight_reciver) = mpsc::sync_channel::<(i32, WeightStatus)>(1);
+    // 转换因子（通常需要持久化存储）
+    let transform_factor = (429.58_f32).to_bits();
+    // 创建称重处理器实例
+    let weight_processor = WeightProcessor::new(
+        HX711_CLOCK_PIN,
+        HX711_DATA_PIN,
+        Gain::ChannelA128,
+        5,
+        3,
+        transform_factor,
+        weight_sender,
+    )?;
 
-    // 读取一次有效重量,最多尝试10次（以实现开机去皮）
-    for _ in 0..10 {
-        // 尝试读取当前重量
-        {
-            if let Ok(data) = hx711.read() {
-                println!("开机去皮重量读取成功");
-                // 转换为克
-                let weight = data * 2 / 1000;
-                // 设置皮重
-                tare_weight.store(weight, Ordering::Release);
-                // 储存当前重量
-                current_weight.store(weight, Ordering::Release);
-                // 跳出
-                println!("开机去皮配置成功");
-                break;
-            } else {
-                println!("开机去皮读取重量失败");
-            }
-        }
-        // 等待100ms, 不然HX711芯片处理不过来
-        std::thread::sleep(Duration::from_millis(100));
-    }
-
-    // 克隆一个皮重引用
-    let tare_weight_clone = tare_weight.clone();
-    // 克隆当前重量引用
-    let current_weight_clone = current_weight.clone();
     // 监听按钮状态变化
+    // 实现短按去皮（3秒以内）、长按矫正（3秒以上）
+    // 记录按下的时间点
+    let mut down_time = Instant::now();
     button.on_change(move |state| {
         // 当按钮按下时执行去皮
         if state {
-            println!("去皮按钮已按下");
-            // 将当前重量储存为新的皮重
-            let new_weight = current_weight_clone.load(Ordering::Acquire);
-            println!("新皮重: {}", new_weight);
-            tare_weight_clone.store(new_weight, Ordering::Release);
+            // 记录按下的时间点
+            down_time = Instant::now();
+        } else {
+            // 按键松开
+            // 计算距离按下的时间点已经过了多少时间
+            let duration = down_time.elapsed();
+            if duration > Duration::from_secs(3) {
+                // 执行矫正
+                // TODO: 这里假设放置在秤盘上的砝码是100g，如果是其他重量按需修改即可
+                // 包括重量单位也是通过矫正因子直接转换的，比如放了100g的砝码，这里的实际重量传入100000毫克，则最后输出的重量就是以毫克为单位
+                // 不过像HX711数模转换芯片搭配的称架一般精度最多只能到克了，干扰大会导致小重量乱跳
+                match weight_processor.set_transform_factor(100) {
+                    Ok(transform_factor) => {
+                        println!(
+                            "设置转换矫正因子成功, 当前矫正因子: {}",
+                            f32::from_bits(transform_factor)
+                        );
+                    }
+                    Err(err) => {
+                        eprintln!("设置转换矫正因子失败: {}", err);
+                    }
+                }
+            } else {
+                // 执行去皮
+                weight_processor.set_tare_weight();
+            }
         }
     })?;
 
     // 循环显示重量
     loop {
-        // 读取数据,传感器输出重量单位为KG，移除三位小数
-        match hx711.read() {
-            Ok(data) => {
-                // 转换为克
-                let mut weight = data * 2 / 1000;
-                // 储存当前重量
-                current_weight.store(weight, Ordering::Release);
-                // 获取已配置的皮重
-                let tare_weight_tmp = tare_weight.load(Ordering::Acquire);
-                // 去除皮重
-                weight = weight - tare_weight_tmp;
-                // 校准重量
-                weight = ((weight as f32) * 1.4) as i32;
-                
-                // 执行滤波，防止微小变化
-                // 和上一次的缓存相比，正负1g以内认为无变化，仍然用上一次的重量
-                if let Some(last_weight) = weight_cache.back() {
-                    if (weight - last_weight).abs() <= 1 {
-                        weight = *last_weight;
-                    }
-                }
-
-                // 缓存满了时需要移除首位
-                if weight_cache.len() == 3 {
-                    weight_cache.pop_front();
-                }
-
-                // 缓存重量
-                weight_cache.push_back(weight);
-
-                // 是否稳定
-                let stabel = if weight_cache.len() == 3 {
-                    (weight_cache[0] - weight_cache[1]).abs() <= 1
-                        && (weight_cache[0] - weight_cache[2]).abs() <= 1
-                } else {
-                    false
-                };
-                // 输出当前重量
-                println!("读取重量成功: {}g, 稳定: {}", weight, stabel);
+        // 接收称重处理器传出的数据
+        match weight_reciver.recv() {
+            Ok((weight, status)) => {
+                println!("读取到重量: {}g, 状态: {:?}", weight, status);
             }
+
+            // 接收重量数据失败
             Err(err) => {
-                eprintln!("读取重量失败: {}", err);
+                eprintln!("重量传输通道接收数据失败: {}", err);
             }
         }
-
-        // 等待100ms, 不然HX711芯片处理不过来
-        thread::sleep(Duration::from_millis(100));
     }
 }

@@ -32,9 +32,12 @@ pub struct HX711 {
 impl HX711 {
     /// 自实现等待，使用std::thread::sleep会导致主线程被挂起，引发时许错乱问题，导致数据无法接收成功
     /// 这是由于DHT11严格的时序要求导致的
+    #[inline(always)]
     fn wait(duration: Duration) {
         let start = Instant::now();
-        while start.elapsed() < duration {}
+        while start.elapsed() < duration {
+            core::hint::black_box(duration);
+        }
     }
 
     /// 构建传感器实例（单从机通信，I2C引脚将被独占）
@@ -112,8 +115,24 @@ impl HX711 {
             Self::wait(Duration::from_micros(1));
         }
 
-        // 将读取到的无符号24位数据数据转换为有符号32位数据
-        Ok(((raw_data as i32) << 8) >> 8)
+        // 确保我们只处理低24位，屏蔽掉可能的高8位
+        // 0x00FFFFFF 是 0000 0000 1111 1111 1111 1111 1111 1111
+        raw_data &= 0x00FFFFFF;
+        // 检查符号位（最高位）
+        if (raw_data & 0x00800000) != 0 {
+            // 0x00800000 是 0000 0000 1000 0000 0000 0000 0000 0000
+            // 如果符号位是1（负数），则进行符号扩展（将高8位置1）
+            // 0xFF000000 是 1111 1111 0000 0000 0000 0000 0000 0000
+            raw_data = raw_data | 0xFF000000;
+        } else {
+            // 如果符号位是0（正数），高8位已经是0，无需操作。
+            // 或者可以显式地确保高8位为0
+            // 0x00FFFFFF 是 0000 0000 1111 1111 1111 1111 1111 1111
+            // rawData &= 0x00FFFFFF;
+        }
+
+        // OK
+        Ok(raw_data as i32)
     }
 
     /// 重置HX711

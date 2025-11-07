@@ -1,4 +1,6 @@
 *.rs text eol=lf
 *.md text eol=lf
+*.sh text eol=lf
+*.ps1 text eol=crlf
 Cargo.lock text eol=lf
 Cargo.toml text eol=lf
