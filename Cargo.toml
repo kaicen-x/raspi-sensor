@@ -24,6 +24,10 @@ path = "src/cmd/dht11_sensor_test.rs"
 name = "weight-sensor-test"
 path = "src/cmd/weight_sensor_test.rs"
 
+[[bin]]
+name = "switch-sensor-test"
+path = "src/cmd/switch_sensor_test.rs"
+
 [dependencies]
 rppal = "0.22.1"
 anyhow = "1.0.100"
