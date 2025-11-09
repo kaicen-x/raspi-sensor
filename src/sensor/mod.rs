@@ -5,3 +5,4 @@ pub mod hx711;
 pub mod switch;
 pub mod aht30;
 pub mod bme280;
+pub mod uln2003a;
