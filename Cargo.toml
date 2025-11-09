@@ -32,6 +32,10 @@ path = "src/cmd/switch_sensor_test.rs"
 name = "aht30-sensor-test"
 path = "src/cmd/aht30_sensor_test.rs"
 
+[[bin]]
+name = "bme280-sensor-test"
+path = "src/cmd/bme280_sensor_test.rs"
+
 [dependencies]
 rppal = "0.22.1"
 anyhow = "1.0.100"
