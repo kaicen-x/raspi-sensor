@@ -7,7 +7,7 @@ use std::{
 use raspi_sensor::sensor::{aht30::AHT30, bme280::BME280};
 use rppal::i2c::I2c;
 
-/// AHT30传感器测试程序
+/// BME280传感器测试程序
 fn main() -> anyhow::Result<()> {
     // 初始化I2C通信总线
     let i2c_handle = Arc::new(Mutex::new(I2c::new()?));
