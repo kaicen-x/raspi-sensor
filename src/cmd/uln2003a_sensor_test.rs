@@ -17,7 +17,7 @@ fn main() -> anyhow::Result<()> {
     //  创建Button实例
     let mut button = Button::new(BUTTON_PIN)?;
     // 创建步进电机实例
-    let mut ula2003a = ULN2003A::new(
+    let mut ula2003a_driver = ULN2003A::new(
         ULN2003A_INT1_PIN,
         ULN2003A_INT2_PIN,
         ULN2003A_INT3_PIN,
@@ -32,10 +32,10 @@ fn main() -> anyhow::Result<()> {
         if btn_state {
             // 检测缓存状态
             if !state {
-                ula2003a.run_steps(1000, Duration::from_millis(5), Direction::Clockwise);
+                ula2003a_driver.run_steps(1000, Duration::from_millis(5), Direction::Clockwise);
                 println!("检测到按钮按下，顺时针旋转8步")
             } else {
-                ula2003a.run_steps(1500, Duration::from_millis(5), Direction::CounterClockwise);
+                ula2003a_driver.run_steps(1500, Duration::from_millis(5), Direction::CounterClockwise);
                 println!("检测到按钮按下，逆时针旋转10步")
             }
             state = !state;

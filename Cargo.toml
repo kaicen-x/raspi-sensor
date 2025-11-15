@@ -47,3 +47,6 @@ path = "src/cmd/uln2003a_sensor_test.rs"
 [dependencies]
 rppal = "0.22.1"
 anyhow = "1.0.100"
+sensor-hal = { path = "/mnt/e/Project_Code/Rust/sensor-hal",features = ["std"] }
+embedded-hal = "1.0.0"
+embedded-timers = { version = "0.4.0", features = ["std"] }

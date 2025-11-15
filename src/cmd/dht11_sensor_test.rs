@@ -1,38 +1,31 @@
 use std::{thread, time::Duration};
 
-use raspi_sensor::sensor::dht11::DHT11;
-use raspi_sensor::sensor::led::LED;
+use raspi_sensor::{io_pin_wapper::IoPinWapper, std_clock::StdClock};
+use rppal::gpio::{Gpio, Mode};
+use sensor_hal::dht11;
 
 /// DHT11传感器单总线接入GPIO针脚
 const DHT11_PIN: u8 = 4;
-// LED灯接入GPIO针脚
-const LED_PIN: u8 = 27;
 
 fn main() -> anyhow::Result<()> {
-    // 创建DHT11传感器实例
-    let mut dht11 = DHT11::new(DHT11_PIN)?;
-    // 创建LED实例
-    let mut led = LED::new(LED_PIN)?;
-    // 初始LED灯状态为关闭
-    led.close();
+    // 初始化GPIO实例
+    let gpio = Gpio::new()?;
+    let clock = StdClock::new();
+
+    // 创建DHT11传感器引脚实例
+    let dht11_gpio = IoPinWapper::new(gpio.get(DHT11_PIN)?.into_io(Mode::Output));
+    // 创建DHT11传感器驱动实例
+    let mut dht11_driver = dht11::Driver::new(dht11_gpio, &clock)?;
 
     // 死循环读取传感器
     loop {
         // 读取DHT11传感器数据
-        match dht11.read() {
+        match dht11_driver.read() {
             Ok((temp, hum)) => {
-                // 温度不在指定范围内需要亮灯
-                // 湿度不在指定范围内需要亮灯
-                if temp < 10.0 || temp > 40.0 || hum < 20.0 || hum > 60.0 {
-                    led.open();
-                } else {
-                    // 有效范围不需要亮灯
-                    led.close();
-                }
                 println!("✅ 温度: {:.1}°C, 湿度: {:.1}%", temp, hum);
             }
             Err(e) => {
-                eprintln!("❌ 读取失败: {}", e);
+                eprintln!("❌ 读取失败: {:?}", e);
             }
         }
 

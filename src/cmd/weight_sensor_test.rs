@@ -9,8 +9,12 @@ use std::{
 };
 use std::{thread, time::Duration};
 
-use raspi_sensor::sensor::button::Button;
-use raspi_sensor::sensor::hx711::{Gain, HX711};
+use raspi_sensor::{
+    input_pin_wapper::InputPinWapper, output_pin_wapper::OutputPinWapper, sensor::button::Button,
+    std_clock::StdClock,
+};
+use rppal::gpio::Gpio;
+use sensor_hal::hx711;
 
 /// 重量状态
 #[repr(i32)]
@@ -137,20 +141,29 @@ impl WeightProcessor {
     }
 
     /// 构建称重处理器实例
-    /// 
+    ///
     /// - bq_cap: ADC读数缓冲队列容量
     /// - sq_cap: ADC读数稳定检查队列容量
     pub fn new(
         clock_pin: u8,
         data_pin: u8,
-        gain: Gain,
+        channel_gain: hx711::ChannelGain,
         bq_cap: usize,
         sq_cap: usize,
         transform_factor: u32,
         sender: mpsc::SyncSender<(i32, WeightStatus)>,
     ) -> anyhow::Result<Self> {
+        // 创建GPIO实例
+        let gpio = Gpio::new()?;
+        let clock: &'static StdClock = Box::leak(Box::new(StdClock::new()));
+
+        // 创建时钟引脚实例,并默认置为低电平
+        let clock_gpio = OutputPinWapper::new(gpio.get(clock_pin)?.into_output_low());
+        // 创建数据引脚实例，并默认为上拉模式
+        let data_gpio = InputPinWapper::new(gpio.get(data_pin)?.into_input_pullup());
+
         // 构建HX711数模转换传感器实例
-        let mut hx711 = HX711::new(clock_pin, data_pin, gain)?;
+        let mut hx711_driver = hx711::Driver::new(clock_gpio, data_gpio, channel_gain, clock)?;
 
         // ADC读数缓冲队列
         let mut adc_data_buffer_queue: VecDeque<i32> = VecDeque::with_capacity(bq_cap);
@@ -160,7 +173,7 @@ impl WeightProcessor {
         // 读取10次有效ADC读数（确保缓冲队列有值，以实现开机去皮）
         for _ in 0..10 {
             // 读取数据
-            if let Ok(data) = hx711.read() {
+            if let Ok(data) = hx711_driver.read() {
                 // 将数据添加到ADC读数缓冲队列
                 Self::queue_push(&mut adc_data_buffer_queue, bq_cap, data);
             }
@@ -186,7 +199,7 @@ impl WeightProcessor {
         // 独立线程运行传感器数据读取
         // adc_data_buffer_queue、adc_data_stable_queue不需要克隆，他们的所有权就在独立线程中
         WeightProcessor::loop_read(
-            hx711,
+            hx711_driver,
             sender,
             adc_data_buffer_queue,
             bq_cap,
@@ -207,7 +220,7 @@ impl WeightProcessor {
 
     /// 循环读取传感器数据
     fn loop_read(
-        mut hx711: HX711,
+        mut hx711: hx711::Driver<'static, InputPinWapper, OutputPinWapper, StdClock>,
         sender: mpsc::SyncSender<(i32, WeightStatus)>,
         mut adc_data_buffer_queue: VecDeque<i32>,
         bq_cap: usize,
@@ -293,7 +306,7 @@ impl WeightProcessor {
 
                     // 读取失败
                     Err(err) => {
-                        eprintln!("读取ADC读数失败: {}", err);
+                        eprintln!("读取ADC读数失败: {:?}", err);
                         // 向通道发送数据
                         if let Err(err) = sender.send((0, WeightStatus::Error)) {
                             eprintln!("向通道接收者发送异常信息失败: {}", err);
@@ -352,7 +365,7 @@ const HX711_CLOCK_PIN: u8 = 24;
 /// 称重传感器测试程序
 fn main() -> anyhow::Result<()> {
     // 创建按钮实例
-    let mut button = Button::new(BUTTON_PIN)?;
+    let mut button_driver = Button::new(BUTTON_PIN)?;
     // 创建重量传输通道
     let (weight_sender, weight_reciver) = mpsc::sync_channel::<(i32, WeightStatus)>(1);
     // 转换因子（通常需要持久化存储）
@@ -361,7 +374,7 @@ fn main() -> anyhow::Result<()> {
     let weight_processor = WeightProcessor::new(
         HX711_CLOCK_PIN,
         HX711_DATA_PIN,
-        Gain::ChannelA128,
+        hx711::ChannelGain::ChannelA128,
         5,
         3,
         transform_factor,
@@ -372,7 +385,7 @@ fn main() -> anyhow::Result<()> {
     // 实现短按去皮（3秒以内）、长按矫正（3秒以上）
     // 记录按下的时间点
     let mut down_time = Instant::now();
-    button.on_change(move |state| {
+    button_driver.on_change(move |state| {
         // 当按钮按下时执行去皮
         if state {
             // 记录按下的时间点
