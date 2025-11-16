@@ -10,16 +10,6 @@ checksum = "a23eb6b1614318a8071c9b2521f36b424b2c83db5eb3a0fead4a6c0809af6e61"
 
 [[package]]
 name = "embedded-hal"
-version = "0.2.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "35949884794ad573cf46071e41c9b60efb0cb311e3ca01f7af807af1debc66ff"
-dependencies = [
- "nb 0.1.3",
- "void",
-]
-
-[[package]]
-name = "embedded-hal"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "361a90feb7004eca4019fb28352a9465666b24f840f5c3cddf0ff13920590b89"
@@ -30,9 +20,15 @@ version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fba4268c14288c828995299e59b12babdbe170f6c6d73731af1b4648142e8605"
 dependencies = [
- "embedded-hal 1.0.0",
- "nb 1.1.0",
+ "embedded-hal",
+ "nb",
 ]
+
+[[package]]
+name = "embedded-io"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "edd0f118536f44f5ccd48bcb8b111bdc3de888b58c74639dfb034a357d0f206d"
 
 [[package]]
 name = "embedded-timers"
@@ -40,8 +36,8 @@ version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b13fd4109a4b9b49b1c747c64b2d813f33639b723e2c3b7b36190edd051bc06"
 dependencies = [
- "embedded-hal 1.0.0",
- "nb 1.1.0",
+ "embedded-hal",
+ "nb",
  "void",
 ]
 
@@ -50,15 +46,6 @@ name = "libc"
 version = "0.2.177"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2874a2af47a2325c2001a6e6fad9b16a53b802102b528163885171cf92b15976"
-
-[[package]]
-name = "nb"
-version = "0.1.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "801d31da0513b6ec5214e9bf433a77966320625a37860f910be265be6e18d06f"
-dependencies = [
- "nb 1.1.0",
-]
 
 [[package]]
 name = "nb"
@@ -71,8 +58,7 @@ name = "raspi-sensor"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "embedded-hal 0.2.7",
- "embedded-hal 1.0.0",
+ "embedded-hal",
  "embedded-timers",
  "rppal",
  "sensor-hal",
@@ -81,23 +67,19 @@ dependencies = [
 [[package]]
 name = "rppal"
 version = "0.22.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c1ce3b019009cff02cb6b0e96e7cc2e5c5b90187dc1a490f8ef1521d0596b026"
 dependencies = [
- "embedded-hal 0.2.7",
- "embedded-hal 1.0.0",
+ "embedded-hal",
  "embedded-hal-nb",
+ "embedded-io",
  "libc",
- "nb 0.1.3",
  "spin_sleep",
- "void",
 ]
 
 [[package]]
 name = "sensor-hal"
 version = "0.1.0"
 dependencies = [
- "embedded-hal 1.0.0",
+ "embedded-hal",
  "embedded-timers",
 ]
 

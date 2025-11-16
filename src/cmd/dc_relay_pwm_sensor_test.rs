@@ -1,12 +1,12 @@
 use std::{thread, time::Duration};
 
-use raspi_sensor::pwm_wapper::PwmWapper;
+// use raspi_sensor::pwm_wapper::PwmWapper;
 use rppal::pwm::{Channel, Pwm};
 use sensor_hal::dc_relay;
 
 /// DC直流开关传感器PWM测试程序
 fn main() -> anyhow::Result<()> {
-    let dc_relay_pwm = PwmWapper::new(Pwm::new(Channel::Pwm0)?);
+    let dc_relay_pwm = Pwm::new(Channel::Pwm0, 1000)?;
 
     // 创建DC PWM开关实例
     let mut dc_relay_pwm_driver = dc_relay::PwmDriver::new(dc_relay_pwm);

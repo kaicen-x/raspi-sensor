@@ -48,9 +48,11 @@ path = "src/cmd/uln2003a_sensor_test.rs"
 path = "/mnt/e/Project_Code/Rust/sensor-hal"
 features = ["std"]
 
+[dependencies.rppal]
+path = "/home/ubuntu/project/rust/raspi-hal"
+features = ["hal"]
+
 [dependencies]
 anyhow = "1.0.100"
 embedded-hal = "1.0.0"
 embedded-timers = { version = "0.4.0", features = ["std"] }
-rppal = { version = "0.22.1", features = ["hal"] }
-embedded-hal-0 = { version = "0.2.7", package = "embedded-hal" }
