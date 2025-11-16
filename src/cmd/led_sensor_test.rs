@@ -1,6 +1,5 @@
 use std::{thread, time::Duration};
 
-use raspi_sensor::output_pin_wapper::OutputPinWapper;
 use rppal::gpio::Gpio;
 use sensor_hal::led;
 
@@ -12,7 +11,7 @@ fn main() -> anyhow::Result<()> {
     let gpio = Gpio::new()?;
 
     // 创建LED实例
-    let led_gpio = OutputPinWapper::new(gpio.get(LED_PIN)?.into_output_low());
+    let led_gpio = gpio.get(LED_PIN)?.into_output_low();
     let mut led_driver = led::Driver::new(led_gpio, led::PinState::High);
 
     // 死循环读取传感器

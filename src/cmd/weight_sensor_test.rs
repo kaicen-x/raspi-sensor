@@ -9,11 +9,8 @@ use std::{
 };
 use std::{thread, time::Duration};
 
-use raspi_sensor::{
-    input_pin_wapper::InputPinWapper, output_pin_wapper::OutputPinWapper, sensor::button::Button,
-    std_clock::StdClock,
-};
-use rppal::gpio::Gpio;
+use raspi_sensor::{sensor::button::Button, std_clock::StdClock};
+use rppal::gpio::{Gpio, InputPin, OutputPin};
 use sensor_hal::hx711;
 
 /// 重量状态
@@ -158,9 +155,9 @@ impl WeightProcessor {
         let clock: &'static StdClock = Box::leak(Box::new(StdClock::new()));
 
         // 创建时钟引脚实例,并默认置为低电平
-        let clock_gpio = OutputPinWapper::new(gpio.get(clock_pin)?.into_output_low());
+        let clock_gpio = gpio.get(clock_pin)?.into_output_low();
         // 创建数据引脚实例，并默认为上拉模式
-        let data_gpio = InputPinWapper::new(gpio.get(data_pin)?.into_input_pullup());
+        let data_gpio = gpio.get(data_pin)?.into_input_pullup();
 
         // 构建HX711数模转换传感器实例
         let mut hx711_driver = hx711::Driver::new(clock_gpio, data_gpio, channel_gain, clock)?;
@@ -220,7 +217,7 @@ impl WeightProcessor {
 
     /// 循环读取传感器数据
     fn loop_read(
-        mut hx711: hx711::Driver<'static, InputPinWapper, OutputPinWapper, StdClock>,
+        mut hx711: hx711::Driver<'static, InputPin, OutputPin, StdClock>,
         sender: mpsc::SyncSender<(i32, WeightStatus)>,
         mut adc_data_buffer_queue: VecDeque<i32>,
         bq_cap: usize,

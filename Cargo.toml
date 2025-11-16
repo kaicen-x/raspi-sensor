@@ -25,12 +25,12 @@ name = "weight-sensor-test"
 path = "src/cmd/weight_sensor_test.rs"
 
 [[bin]]
-name = "switch-sensor-test"
-path = "src/cmd/switch_sensor_test.rs"
+name = "dc-relay-sensor-test"
+path = "src/cmd/dc_relay_sensor_test.rs"
 
 [[bin]]
-name = "pwm-switch-sensor-test"
-path = "src/cmd/pwm_switch_sensor_test.rs"
+name = "dc-relay-pwm-sensor-test"
+path = "src/cmd/dc_relay_pwm_sensor_test.rs"
 
 [[bin]]
 name = "aht30-sensor-test"
@@ -44,9 +44,13 @@ path = "src/cmd/bme280_sensor_test.rs"
 name = "uln2003a_sensor_test"
 path = "src/cmd/uln2003a_sensor_test.rs"
 
+[dependencies.sensor-hal]
+path = "/mnt/e/Project_Code/Rust/sensor-hal"
+features = ["std"]
+
 [dependencies]
-rppal = "0.22.1"
 anyhow = "1.0.100"
-sensor-hal = { path = "/mnt/e/Project_Code/Rust/sensor-hal",features = ["std"] }
 embedded-hal = "1.0.0"
 embedded-timers = { version = "0.4.0", features = ["std"] }
+rppal = { version = "0.22.1", features = ["hal"] }
+embedded-hal-0 = { version = "0.2.7", package = "embedded-hal" }

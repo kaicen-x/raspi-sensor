@@ -1,6 +1,6 @@
 use std::{thread, time::Duration};
 
-use raspi_sensor::{io_pin_wapper::IoPinWapper, std_clock::StdClock};
+use raspi_sensor::std_clock::StdClock;
 use rppal::gpio::{Gpio, Mode};
 use sensor_hal::dht11;
 
@@ -13,7 +13,7 @@ fn main() -> anyhow::Result<()> {
     let clock = StdClock::new();
 
     // 创建DHT11传感器引脚实例
-    let dht11_gpio = IoPinWapper::new(gpio.get(DHT11_PIN)?.into_io(Mode::Output));
+    let dht11_gpio = gpio.get(DHT11_PIN)?.into_io(Mode::Output);
     // 创建DHT11传感器驱动实例
     let mut dht11_driver = dht11::Driver::new(dht11_gpio, &clock)?;
 

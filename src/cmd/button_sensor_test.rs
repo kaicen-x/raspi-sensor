@@ -1,7 +1,6 @@
 use std::thread;
 use std::time::Duration;
 
-use raspi_sensor::{input_pin_wapper::InputPinWapper, output_pin_wapper::OutputPinWapper};
 use rppal::gpio::Gpio;
 use sensor_hal::{
     button::{self},
@@ -18,10 +17,10 @@ fn main() -> anyhow::Result<()> {
     let gpio = Gpio::new()?;
 
     //  创建Button实例
-    let button_gpio = InputPinWapper::new(gpio.get(BUTTON_PIN)?.into_input_pullup());
+    let button_gpio = gpio.get(BUTTON_PIN)?.into_input_pullup();
     let mut button_driver = button::AntishakeDriver::new(button_gpio, button::PinState::Low)?;
     // 创建LED实例
-    let led_gpio = OutputPinWapper::new(gpio.get(LED_PIN)?.into_output_low());
+    let led_gpio = gpio.get(LED_PIN)?.into_output_low();
     let mut led_driver = led::Driver::new(led_gpio, led::PinState::High);
 
     // 初始LED灯为关闭状态
