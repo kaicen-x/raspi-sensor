@@ -1,26 +1,26 @@
-use std::{
-    sync::{Arc, Mutex},
-    thread,
-    time::Duration,
-};
+use std::{thread, time::Duration};
 
-use raspi_sensor::sensor::aht30::AHT30;
+use raspi_sensor::std_clock::StdClock;
 use rppal::i2c::I2c;
+use sensor_hal::aht30;
 
 /// AHT30传感器测试程序
 fn main() -> anyhow::Result<()> {
+    // 初始化全局时钟
+    let clock = StdClock::new();
     // 初始化I2C通信总线
-    let i2c_handle = I2c::new()?;
+    let mut i2c_bus = I2c::new()?;
+
     // 创建AHT30传感器实例
-    let aht30 = AHT30::new(Arc::new(Mutex::new(i2c_handle)), 0x38)?;
+    let mut aht30_driver = aht30::Driver::new(&clock, &mut i2c_bus, Some(0x38))?;
 
     // 死循环读取传感器数据
     loop {
         // 读取数据
-        match aht30.read() {
+        match aht30_driver.read(&mut i2c_bus) {
             // 读取成功
             Ok((temperature, humidity)) => {
-                println!("读取到的温度: {:.2}℃, 湿度: {:.2}%", temperature, humidity);
+                println!("读取到的温度: {:.1}℃, 湿度: {:.1}%", temperature, humidity);
             }
             // 读取失败
             Err(err) => {

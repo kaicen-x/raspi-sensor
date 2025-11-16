@@ -1,25 +1,25 @@
-use std::{
-    sync::{Arc, Mutex},
-    thread,
-    time::Duration,
-};
+use std::{thread, time::Duration};
 
-use raspi_sensor::sensor::{aht30::AHT30, bme280::BME280};
+use raspi_sensor::std_clock::StdClock;
 use rppal::i2c::I2c;
+use sensor_hal::{aht30, bme280};
 
 /// BME280传感器测试程序
 fn main() -> anyhow::Result<()> {
+    // 初始化全局时钟
+    let clock = StdClock::new();
     // 初始化I2C通信总线
-    let i2c_handle = Arc::new(Mutex::new(I2c::new()?));
+    let mut i2c_bus = I2c::new()?;
+
     // 创建AHT30传感器实例
-    let aht30 = AHT30::new(i2c_handle.clone(), 0x38)?;
+    let mut aht30_driver = aht30::Driver::new(&clock, &mut i2c_bus, Some(0x38))?;
     // 创建AHT30传感器实例
-    let mut bme280 = BME280::new(i2c_handle.clone(), 0x76)?;
+    let mut bme280_driver = bme280::Driver::new(&clock, &mut i2c_bus, Some(0x76))?;
 
     // 死循环读取传感器数据
     loop {
         // 读取AHT30数据
-        match aht30.read() {
+        match aht30_driver.read(&mut i2c_bus) {
             // 读取成功
             Ok((temperature, humidity)) => {
                 println!(
@@ -34,7 +34,7 @@ fn main() -> anyhow::Result<()> {
         }
 
         // 读取BME280数据
-        match bme280.read() {
+        match bme280_driver.read(&mut i2c_bus) {
             // 读取成功
             Ok((temperature, pressure, humidity)) => {
                 println!(

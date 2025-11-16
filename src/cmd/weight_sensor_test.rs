@@ -160,7 +160,7 @@ impl WeightProcessor {
         let data_gpio = gpio.get(data_pin)?.into_input_pullup();
 
         // 构建HX711数模转换传感器实例
-        let mut hx711_driver = hx711::Driver::new(clock_gpio, data_gpio, channel_gain, clock)?;
+        let mut hx711_driver = hx711::Driver::new(clock, clock_gpio, data_gpio, channel_gain)?;
 
         // ADC读数缓冲队列
         let mut adc_data_buffer_queue: VecDeque<i32> = VecDeque::with_capacity(bq_cap);
@@ -217,7 +217,7 @@ impl WeightProcessor {
 
     /// 循环读取传感器数据
     fn loop_read(
-        mut hx711: hx711::Driver<'static, InputPin, OutputPin, StdClock>,
+        mut hx711: hx711::Driver<'static, StdClock, InputPin, OutputPin>,
         sender: mpsc::SyncSender<(i32, WeightStatus)>,
         mut adc_data_buffer_queue: VecDeque<i32>,
         bq_cap: usize,

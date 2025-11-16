@@ -15,7 +15,7 @@ fn main() -> anyhow::Result<()> {
     // 创建DHT11传感器引脚实例
     let dht11_gpio = gpio.get(DHT11_PIN)?.into_io(Mode::Output);
     // 创建DHT11传感器驱动实例
-    let mut dht11_driver = dht11::Driver::new(dht11_gpio, &clock)?;
+    let mut dht11_driver = dht11::Driver::new(&clock, dht11_gpio)?;
 
     // 死循环读取传感器
     loop {
